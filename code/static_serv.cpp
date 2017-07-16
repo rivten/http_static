@@ -131,9 +131,33 @@ http_response RespondToRequest(http_request Request)
 {
 	http_response Result = {};
 
-	Result.StatusCode = 200;
+	rvtn_string DataPath = CreateString("../data");
 
-	Result.Body = CreateString("<H1>Success!</H1>");
+	rvtn_string FilePath = ConcatString(DataPath, Request.URI);
+	char* FilePathCStr = CString_(FilePath);
+	SDL_RWops* FileHandle = SDL_RWFromFile(FilePathCStr, "r");
+	Free(FilePathCStr);
+	FreeString(&Request.URI);
+
+	if(FileHandle)
+	{
+		Result.StatusCode = 200;
+		s64 FileSize = SDL_RWsize(FileHandle);
+
+		char FileBuffer[2048];
+		Assert((u32)FileSize < ArrayCount(FileBuffer));
+		size_t ObjectRead = SDL_RWread(FileHandle, FileBuffer, FileSize, 1);
+		Assert(ObjectRead == 1);
+
+		Result.Body = CreateString(FileBuffer);
+
+		SDL_RWclose(FileHandle);
+	}
+	else
+	{
+		Result.StatusCode = 404;
+	}
+
 
 	return(Result);
 }
@@ -159,6 +183,8 @@ rvtn_string GenerateStringFromHTTPResponse(http_response Response)
 			Response.StatusCode, StatusReason);
 	rvtn_string StatusLine = CreateString(StatusLineBuffer);
 	rvtn_string Result = ConcatString(StatusLine, Response.Body);
+	FreeString(&StatusLine);
+	FreeString(&Response.Body);
 
 	return(Result);
 }
@@ -189,10 +215,12 @@ void Server(void)
 					rvtn_string ClientMessage = TCPReceive(ClientSocket);
 					if(ClientMessage.Size > 0)
 					{
+						Print(ClientMessage);
 						http_request HTTPRequest = ParseHTTPRequest(ClientMessage);
 						FreeString(&ClientMessage);
 
 						http_response HTTPResponse = RespondToRequest(HTTPRequest);
+						Assert(HTTPRequest.Method == HTTPMethod_GET); // NOTE(hugo) : Only doing GET for now
 
 						rvtn_string ResponseString = GenerateStringFromHTTPResponse(HTTPResponse);
 						Print(ResponseString);
